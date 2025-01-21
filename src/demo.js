@@ -25,6 +25,53 @@ import {
   SmileOutlined,
 } from '@ant-design/icons';
 import { Badge, Button, Space } from 'antd';
+import OpenAI from 'openai';
+
+// 使用 create-react-app 的环境变量
+const azureOpenAIKey = process.env.REACT_APP_AZURE_OPENAI_KEY;
+const azureOpenAIEndpoint = process.env.REACT_APP_AZURE_OPENAI_ENDPOINT;
+const azureOpenAIVersion = "2024-05-01-preview";
+
+// 检查环境变量
+if (!azureOpenAIKey || !azureOpenAIEndpoint) {
+  throw new Error("Please set REACT_APP_AZURE_OPENAI_KEY and REACT_APP_AZURE_OPENAI_ENDPOINT in your environment variables.");
+}
+
+console.log('Environment variables:', {
+  key: process.env.REACT_APP_AZURE_OPENAI_KEY ? '已设置' : '未设置',
+  endpoint: process.env.REACT_APP_AZURE_OPENAI_ENDPOINT ? '已设置' : '未设置'
+});
+
+// Get Azure SDK client
+const client = new OpenAI({
+  apiKey: azureOpenAIKey,
+  baseURL: `${azureOpenAIEndpoint}/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview`,
+  defaultQuery: { 'api-version': azureOpenAIVersion },
+  defaultHeaders: { 'api-key': azureOpenAIKey },
+  dangerouslyAllowBrowser: true
+});
+
+const options = {
+  model: "gpt-4o", // replace with model deployment name
+  name: "Assistant707",
+  instructions: "",
+  tools: [],
+  tool_resources: {},
+  temperature: 1,
+  top_p: 1
+};
+
+const setupAssistant = async () => {
+  try {
+    const assistantResponse = await client.beta.assistants.create(options);
+    console.log(`Assistant created: ${JSON.stringify(assistantResponse)}`);
+  } catch (error) {
+    console.error(`Error creating assistant: ${error.message}`);
+  }
+};
+
+setupAssistant();
+
 const renderTitle = (icon, title) => (
   <Space align="start">
     {icon}
@@ -223,28 +270,52 @@ const Independent = () => {
   const [conversationsItems, setConversationsItems] = React.useState(defaultConversationsItems);
   const [activeKey, setActiveKey] = React.useState(defaultConversationsItems[0].key);
   const [attachedFiles, setAttachedFiles] = React.useState([]);
+  const [messages, setMessages] = React.useState([]);
 
   // ==================== Runtime ====================
   const [agent] = useXAgent({
-    request: async ({ message }, { onSuccess }) => {
-      onSuccess(`Mock success return. You said: ${message}`);
+    request: async (info, callbacks) => {
+      const { messages, message } = info;
+      const { onSuccess, onUpdate, onError } = callbacks;
+
+      // 打印当前消息和历史消息
+      console.log('message', message);
+      console.log('messages', messages);
+
+      let content = '';
+
+      try {
+        const stream = await client.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: message }],
+          stream: true,
+        });
+
+        for await (const chunk of stream) {
+          content += chunk.choices[0]?.delta?.content || '';
+          onUpdate(content);
+        }
+
+        onSuccess(content);
+      } catch (error) {
+        console.error('Azure OpenAI error:', error);
+        onError(error);
+      }
     },
   });
-  const { onRequest, messages, setMessages } = useXChat({
-    agent,
-  });
-  useEffect(() => {
-    if (activeKey !== undefined) {
-      setMessages([]);
-    }
-  }, [activeKey]);
+
+  const {
+    onRequest,
+    messages: chatMessages,
+  } = useXChat({ agent });
+
+  const items = chatMessages.map(({ message, id }) => ({
+    key: id,
+    content: message,
+    role: 'ai',
+  }));
 
   // ==================== Event ====================
-  const onSubmit = (nextContent) => {
-    if (!nextContent) return;
-    onRequest(nextContent);
-    setContent('');
-  };
   const onPromptsItemClick = (info) => {
     onRequest(info.data.description);
   };
@@ -293,12 +364,6 @@ const Independent = () => {
       />
     </Space>
   );
-  const items = messages.map(({ id, message, status }) => ({
-    key: id,
-    loading: status === 'loading',
-    role: status === 'local' ? 'local' : 'ai',
-    content: message,
-  }));
   const attachmentsNode = (
     <Badge dot={attachedFiles.length > 0 && !headerOpen}>
       <Button type="text" icon={<PaperClipOutlined />} onClick={() => setHeaderOpen(!headerOpen)} />
@@ -389,7 +454,7 @@ const Independent = () => {
         <Sender
           value={content}
           header={senderHeader}
-          onSubmit={onSubmit}
+          onSubmit={onRequest}
           onChange={setContent}
           prefix={attachmentsNode}
           loading={agent.isRequesting()}

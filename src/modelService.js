@@ -3,7 +3,6 @@ import { useXAgent } from '@ant-design/x';
 // 模型服务配置
 export const MODEL_CONFIG = {
   baseURL: 'http://20.2.232.137/v1/chat-messages',
-  model: 'gpt-3.5-turbo',
   // 可以添加其他配置项
   headers: {
     'Content-Type': 'application/json',
@@ -16,18 +15,27 @@ export const MODEL_CONFIG = {
 export const useModelService = () => {
   const [agent] = useXAgent({
     ...MODEL_CONFIG,
-    // 可以添加请求拦截器
+    // 修改请求拦截器来格式化请求数据
     requestInterceptors: [
       (config) => {
-        // 在发送请求前做些什么
+        // 格式化请求数据以匹配API要求
+        const formattedData = {
+          inputs: {},
+          query: config.data.message,
+          response_mode: "streaming",
+          conversation_id: config.data.conversationId || "",
+          user: config.data.userId || "default-user",
+          files: config.data.files || []
+        };
+
+        config.data = formattedData;
         console.log('Sending request:', config);
         return config;
       },
     ],
-    // 可以添加响应拦截器
+    // 响应拦截器处理返回数据
     responseInterceptors: [
       (response) => {
-        // 处理响应数据
         console.log('Received response:', response);
         return response;
       },
@@ -35,11 +43,33 @@ export const useModelService = () => {
     // 错误处理
     onError: (error) => {
       console.error('Model service error:', error);
-      // 可以添加错误处理逻辑
     },
   });
 
   return agent;
+};
+
+// 格式化聊天消息，增加文件支持
+export const formatChatMessage = (content, options = {}) => {
+  const {
+    role = 'user',
+    files = [],
+    userId,
+    conversationId
+  } = options;
+
+  return {
+    role,
+    message: content,
+    timestamp: new Date().toISOString(),
+    files: files.map(file => ({
+      type: file.type || 'image',
+      transfer_method: 'remote_url',
+      url: file.url
+    })),
+    userId,
+    conversationId
+  };
 };
 
 // 预设的系统消息
@@ -47,13 +77,4 @@ export const SYSTEM_MESSAGES = {
   default: '你好！我是一个 AI 助手，很高兴为您服务。',
   professional: '我是一个专业的 AI 助手，专注于提供准确和专业的回答。',
   friendly: '你好！我是你的 AI 朋友，让我们开始愉快的对话吧！',
-};
-
-// 工具函数：格式化聊天消息
-export const formatChatMessage = (content, role = 'user') => {
-  return {
-    role,
-    content,
-    timestamp: new Date().toISOString(),
-  };
 }; 
