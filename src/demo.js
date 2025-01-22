@@ -24,7 +24,8 @@ import {
   ShareAltOutlined,
   SmileOutlined,
 } from '@ant-design/icons';
-import { Badge, Button, Space } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+import { Badge, Button, Space, Flex } from 'antd';
 import OpenAI from 'openai';
 
 // 使用 create-react-app 的环境变量
@@ -245,6 +246,12 @@ const senderPromptsItems = [
 const roles = {
   ai: {
     placement: 'start',
+    avatar: {
+      icon: <UserOutlined />,
+      style: {
+        background: '#fde3cf',
+      },
+    },
     typing: {
       step: 5,
       interval: 20,
@@ -258,8 +265,16 @@ const roles = {
   local: {
     placement: 'end',
     variant: 'shadow',
+    avatar: {
+      icon: <UserOutlined />,
+      style: {
+        background: '#87d068',
+      },
+    },
   },
 };
+const sleep = () => new Promise((resolve) => setTimeout(resolve, 1000));
+
 const Independent = () => {
   // ==================== Style ====================
   const { styles } = useStyle();
@@ -309,10 +324,12 @@ const Independent = () => {
     messages: chatMessages,
   } = useXChat({ agent });
 
-  const items = chatMessages.map(({ message, id }) => ({
+  const items = chatMessages.map(({ message, id, status }) => ({
     key: id,
     content: message,
-    role: 'ai',
+    //role: 'ai', // 设置角色为AI 
+    loading: status === 'loading',
+    role: status === 'local' ? 'local' : 'ai',
   }));
 
   // ==================== Event ====================
@@ -432,35 +449,39 @@ const Independent = () => {
           onActiveChange={onConversationClick}
         />
       </div>
-      <div className={styles.chat}>
-        {/* 🌟 消息列表 */}
-        <Bubble.List
-          items={
-            items.length > 0
-              ? items
-              : [
-                  {
-                    content: placeholderNode,
-                    variant: 'borderless',
-                  },
-                ]
-          }
-          roles={roles}
-          className={styles.messages}
-        />
-        {/* 🌟 提示词 */}
-        <Prompts items={senderPromptsItems} onItemClick={onPromptsItemClick} />
-        {/* 🌟 输入框 */}
-        <Sender
-          value={content}
-          header={senderHeader}
-          onSubmit={onRequest}
-          onChange={setContent}
-          prefix={attachmentsNode}
-          loading={agent.isRequesting()}
-          className={styles.sender}
-        />
-      </div>
+      <Flex vertical gap="middle">
+        <div className={styles.chat}>
+          {/* 🌟 消息列表 */}
+          <Bubble.List
+            items={
+              items.length > 0
+                ? items
+                : [
+                    {
+                      content: placeholderNode,
+                      variant: 'borderless',
+                    },
+                  ]
+            }
+            roles={roles}
+            className={styles.messages}
+          />
+          {/* 🌟 提示词 */}
+          <Prompts items={senderPromptsItems} onItemClick={onPromptsItemClick} />
+          {/* 🌟 输入框 */}
+          <Sender
+            value={content}
+            header={senderHeader}
+            onSubmit={onRequest}
+            onChange={setContent}
+            prefix={attachmentsNode}
+            loading={agent.isRequesting()}
+            className={styles.sender}
+          />
+        </div>
+
+      </Flex>
+
     </div>
   );
 };
